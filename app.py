@@ -5,16 +5,17 @@ from flask import Flask, render_template_string, request
 
 app = Flask(__name__)
 
-# Load the trained model
-model_path = "lin.pkl"  # Make sure your pickle file matches this name or update it
-try:
-    with open(model_path, "rb") as file:
-        model = pickle.load(file)
-except Exception as e:
-    model = None
-    print(f"Error loading model: {e}")
+# Load the trained model safely
+MODEL_PATH = "lin.pkl"
+model = None
 
-# HTML & CSS Layout embedded inside app.py
+try:
+    with open(MODEL_PATH, "rb") as file:
+        model = pickle.load(file)
+    print("Model loaded successfully!")
+except Exception as e:
+    print(f"CRITICAL ERROR loading model: {e}")
+
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -112,66 +113,77 @@ HTML_TEMPLATE = """
             box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.1);
         }
 
-    .btn-submit {
-        width: 100%;
-        background: var(--primary);
-        color: white;
-        border: none;
-        padding: 14px;
-        font-size: 16px;
-        font-weight: 600;
-        border-radius: 10px;
-        cursor: pointer;
-        transition: background 0.2s ease, transform 0.1s ease;
-        margin-top: 10px;
-        box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2);
-    }
-
-    .btn-submit:hover {
-        background: var(--primary-hover);
-        transform: translateY(-1px);
-    }
-
-    .result-card {
-        margin-top: 30px;
-        background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
-        color: white;
-        padding: 24px;
-        border-radius: 14px;
-        text-align: center;
-        animation: fadeIn 0.4s ease-in-out;
-        box-shadow: 0 8px 20px rgba(79, 70, 229, 0.25);
-    }
-
-    .result-card h3 {
-        font-size: 13px;
-        font-weight: 500;
-        text-transform: uppercase;
-        letter-spacing: 1.5px;
-        margin-bottom: 8px;
-        opacity: 0.9;
-    }
-
-    .result-card .price {
-        font-size: 32px;
-        font-weight: 700;
-    }
-
-    @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(10px); }
-        to { opacity: 1; transform: translateY(0); }
-    }
-
-    @media (max-width: 600px) {
-        .form-grid {
-            grid-template-columns: 1fr;
-            gap: 0;
+        .btn-submit {
+            width: 100%;
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 14px;
+            font-size: 16px;
+            font-weight: 600;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: background 0.2s ease, transform 0.1s ease;
+            margin-top: 10px;
+            box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2);
         }
-        .container {
-            padding: 20px;
+
+        .btn-submit:hover {
+            background: var(--primary-hover);
+            transform: translateY(-1px);
         }
-    }
-</style>
+
+        .result-card {
+            margin-top: 30px;
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+            color: white;
+            padding: 24px;
+            border-radius: 14px;
+            text-align: center;
+            animation: fadeIn 0.4s ease-in-out;
+            box-shadow: 0 8px 20px rgba(79, 70, 229, 0.25);
+        }
+
+        .result-card h3 {
+            font-size: 13px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-bottom: 8px;
+            opacity: 0.9;
+        }
+
+        .result-card .price {
+            font-size: 32px;
+            font-weight: 700;
+        }
+
+        .error-card {
+            margin-top: 20px;
+            background: #fee2e2;
+            border: 1px solid #f87171;
+            color: #b91c1c;
+            padding: 15px;
+            border-radius: 10px;
+            font-size: 14px;
+            text-align: center;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @media (max-width: 600px) {
+            .form-grid {
+                grid-template-columns: 1fr;
+                gap: 0;
+            }
+            .container {
+                padding: 20px;
+            }
+        }
+    </style>
 </head>
 <body>
     <div class="container">
@@ -227,6 +239,12 @@ HTML_TEMPLATE = """
             <button type="submit" class="btn-submit">Calculate Insurance Cost</button>
         </form>
 
+        {% if error %}
+        <div class="error-card">
+            <strong>Error:</strong> {{ error }}
+        </div>
+        {% endif %}
+
         {% if prediction is not none %}
         <div class="result-card">
             <h3>Estimated Annual Cost</h3>
@@ -242,7 +260,9 @@ HTML_TEMPLATE = """
 @app.route("/", methods=["GET", "POST"])
 def home():
     prediction = None
+    error = None
     form_data = None
+
     if request.method == "POST":
         try:
             form_data = request.form
@@ -253,14 +273,20 @@ def home():
             smoker = int(form_data["smoker"])
             region = int(form_data["region"])
 
+            if model is None:
+                raise Exception(
+                    "Model file could not be loaded on the server. Verify that 'lin.pkl' is uploaded in your root directory."
+                )
+
             features = np.array([[age, sex, bmi, children, smoker, region]])
-            if model:
-                prediction = float(model.predict(features)[0])
+            prediction = float(model.predict(features)[0])
+
         except Exception as e:
-            print(f"Prediction error: {e}")
+            error = str(e)
+            print(f"Prediction error details: {e}")
 
     return render_template_string(
-        HTML_TEMPLATE, prediction=prediction, form_data=form_data
+        HTML_TEMPLATE, prediction=prediction, error=error, form_data=form_data
     )
 
 
