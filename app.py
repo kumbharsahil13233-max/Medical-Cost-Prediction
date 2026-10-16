@@ -279,7 +279,10 @@ def home():
                 )
 
             features = np.array([[age, sex, bmi, children, smoker, region]])
-            prediction = float(model.predict(features)[0])
+            
+            # Fixed: Safely flatten the array output to extract the scalar value cleanly
+            raw_prediction = model.predict(features)
+            prediction = float(np.ravel(raw_prediction)[0])
 
         except Exception as e:
             error = str(e)
